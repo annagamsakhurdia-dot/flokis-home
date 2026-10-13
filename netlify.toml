@@ -1,0 +1,13 @@
+# Netlify builds this Next.js app with the OpenNext adapter.
+# The plugin is not pinned in package.json, so Netlify keeps the adapter current.
+[build]
+  command = "pnpm build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # pnpm + Next.js: https://docs.netlify.com/snippets/frameworks/nextjs-pnpm-support/
+  PNPM_FLAGS = "--shamefully-hoist"
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
