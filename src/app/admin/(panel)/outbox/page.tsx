@@ -12,7 +12,7 @@ export default async function OutboxPage() {
       </p>
       {emails.length === 0 ? (
         <div className="rounded-2xl border-[1.5px] border-dashed border-sand bg-card px-4 py-12 text-center text-sm text-muted-foreground">
-          წერილები ჯერ არ არის. დაადასტურეთ ჯავშანი და ინვოისი აქ გამოჩნდება.
+          წერილები ჯერ არ არის.
         </div>
       ) : (
         <div className="space-y-4">

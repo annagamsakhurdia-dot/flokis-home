@@ -6,6 +6,7 @@ import { addDays, diffDays, isIsoDate, todayInTbilisi } from "@/lib/domain/dates
 import { bookingRequestSchema, serviceSelectionSchema } from "@/lib/domain/schemas";
 import { SERVICES, type CreateBookingResult, type DayAvailability, type QuoteResult } from "@/lib/domain/types";
 import { publicBackend, quoteBooking } from "@/lib/server/backend";
+import { notifyNewBooking } from "@/lib/server/booking-notify";
 import { rateLimit } from "@/lib/server/rate-limit";
 
 async function clientKey(): Promise<string> {
@@ -33,10 +34,19 @@ export async function submitBookingAction(input: unknown): Promise<CreateBooking
   if (!rateLimit(`book:${await clientKey()}`, 8, 10 * 60_000)) return { ok: false, error: "rate_limited" };
   const parsed = bookingRequestSchema.safeParse(input);
   if (!parsed.success) return { ok: false, error: "invalid" };
+  let result: CreateBookingResult;
   try {
-    return await publicBackend().createBooking(parsed.data);
+    result = await publicBackend().createBooking(parsed.data);
   } catch (err) {
     console.error("create_booking failed", err);
     return { ok: false, error: "network" };
   }
+  if (result.ok) {
+    try {
+      await notifyNewBooking(parsed.data, result);
+    } catch (err) {
+      console.error("[booking email] send failed", err);
+    }
+  }
+  return result;
 }

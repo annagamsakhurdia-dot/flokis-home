@@ -78,7 +78,7 @@ export function PendingCard({ b }: { b: Booking }) {
             <X /> უარყოფა
           </Button>
           <Button className="h-10 flex-1 rounded-xl bg-terracotta px-4 font-bold text-white hover:bg-[#b85a38] sm:flex-none" disabled={pending} onClick={() => run("approve")}>
-            {busy === "approve" ? <Loader2 className="animate-spin" /> : <Check />} დადასტურება + ინვოისი
+            {busy === "approve" ? <Loader2 className="animate-spin" /> : <Check />} დადასტურება
           </Button>
         </div>
       </div>

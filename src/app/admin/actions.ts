@@ -7,8 +7,6 @@ import { paymentSchema, settingsSchema } from "@/lib/domain/schemas";
 import type { Settings } from "@/lib/domain/types";
 import { adminBackend } from "@/lib/server/backend";
 import { requireAdmin, signIn, signOut } from "@/lib/server/auth";
-import { sendEmail } from "@/lib/server/email";
-import { buildInvoiceEmail } from "@/lib/server/invoice";
 
 export type ActionResult = { ok: true; message?: string } | { ok: false; error: string };
 
@@ -32,30 +30,14 @@ export async function logoutAction() {
   redirect("/admin/login");
 }
 
-async function sendInvoice(bookingId: string): Promise<string> {
-  const backend = adminBackend();
-  const [booking, settings] = await Promise.all([backend.getBooking(bookingId), backend.getSettings()]);
-  if (!booking) throw new Error("Booking not found");
-  const sent = await sendEmail(buildInvoiceEmail(booking, settings), settings.business.invoiceSenderEmail);
-  await backend.markInvoiceSent(bookingId);
-  return sent.transport === "mock" ? `ინვოისი „გაიგზავნა“ (სატესტო რეჟიმი) → ${booking.owner.email}` : `ინვოისი გაიგზავნა → ${booking.owner.email}`;
-}
-
 export async function approveAction(bookingId: string, discountPct: number): Promise<ActionResult> {
   const admin = await requireAdmin();
   const discount = z.number().int().min(0).max(50).safeParse(discountPct);
   if (!discount.success) return { ok: false, error: "ფასდაკლება უნდა იყოს 0–50%." };
   const booking = await adminBackend().approveBooking(bookingId, discount.data, admin);
   if (!booking) return { ok: false, error: "ჯავშანი ვერ მოიძებნა ან უკვე განხილულია." };
-  let message = "ჯავშანი დადასტურდა.";
-  try {
-    message += " " + (await sendInvoice(bookingId));
-  } catch (err) {
-    console.error("Invoice email failed", err);
-    message += " ინვოისის გაგზავნა ვერ მოხერხდა — სცადეთ ხელახლა ჯავშნების გვერდიდან.";
-  }
   revalidatePath("/admin", "layout");
-  return { ok: true, message };
+  return { ok: true, message: "ჯავშანი დადასტურდა." };
 }
 
 export async function rejectAction(bookingId: string, reason: string): Promise<ActionResult> {
@@ -64,18 +46,6 @@ export async function rejectAction(bookingId: string, reason: string): Promise<A
   if (!booking) return { ok: false, error: "ჯავშანი ვერ მოიძებნა ან უკვე განხილულია." };
   revalidatePath("/admin", "layout");
   return { ok: true, message: "ჯავშანი უარყოფილია." };
-}
-
-export async function resendInvoiceAction(bookingId: string): Promise<ActionResult> {
-  await requireAdmin();
-  try {
-    const message = await sendInvoice(bookingId);
-    revalidatePath("/admin", "layout");
-    return { ok: true, message };
-  } catch (err) {
-    console.error("Invoice email failed", err);
-    return { ok: false, error: "ინვოისის გაგზავნა ვერ მოხერხდა." };
-  }
 }
 
 export async function addPaymentAction(input: unknown): Promise<ActionResult> {

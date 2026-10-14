@@ -3,7 +3,7 @@
 Booking system for **Floki's Home** (ფლოკის სახლი / Дім Флокі), a dog hotel in Tbilisi.
 
 - **Guest booking page** (`/ka`, `/en`, `/uk`): mobile-first, in Georgian, English and Ukrainian. Guests choose a service (🏨 Hotel overnight, or 🌳 Garden daycare as a single day or a package), then dates or package days. The server computes the price and checks capacity. Guests then enter dog, owner, vet and emergency contact details, give photo consent, accept the terms, confirm, and get a booking number.
-- **Admin panel** (`/admin`, Georgian): login, a pending queue (approve with a 0–50% discount, which sends an invoice, or reject), bookings list with bank-transfer and barter payments, an occupancy calendar with a day panel, and settings for services, prices, capacity and invoice/bank details.
+- **Admin panel** (`/admin`, Georgian): login, a pending queue (approve with a 0–50% discount, or reject), bookings list with bank-transfer and barter payments, an invoice PDF from the booking card, an occupancy calendar with a day panel, and settings for services, prices, capacity and invoice/bank details.
 
 Stack: Next.js 16 (App Router, Server Actions), TypeScript, Tailwind v4, shadcn/ui (Base UI), Supabase (Postgres + Auth), Zod.
 
@@ -14,7 +14,7 @@ pnpm install
 pnpm dev            # http://localhost:4317
 ```
 
-No credentials are needed. Without Supabase env vars the app uses an **in-memory demo store** that is seeded with sample bookings and is reset on every server restart. E-mail is **mocked**: sent invoices show up at `/admin/outbox`.
+No credentials are needed. Without Supabase env vars the app uses an **in-memory demo store** that is seeded with sample bookings and is reset on every server restart. Invoices are printed or saved from the booking; they are not e-mailed.
 
 Demo admin logins (password `graysons-demo`, or whatever you set in `ADMIN_DEMO_PASSWORD`):
 
@@ -58,29 +58,33 @@ The service-role key is only needed for step 3. Don't deploy it. The manager see
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY` | Runtime. Both are required to leave demo mode. |
 | `SESSION_SECRET` | Runtime. Required in production only when Supabase is not configured (32+ characters). |
 | `ADMIN_DEMO_PASSWORD` | In-memory demo login only. |
-| `RESEND_API_KEY`, `INVOICE_FROM_EMAIL` | Invoice e-mail. Optional. |
+| `RESEND_API_KEY` | Optional. Staff notice when a guest creates a booking. Without it, the notice is skipped. The booking still succeeds. Invoices are not e-mailed. |
+| `INVOICE_FROM_EMAIL`, `RESEND_FROM` | Optional `From` for the staff notice (`INVOICE_FROM_EMAIL` wins). Unset uses `Floki's Home <onboarding@resend.dev>`, which only delivers to the Resend account email until a domain is verified. |
+| `BOOKING_NOTIFY_EMAIL` | Optional recipient of the new-booking notice. Defaults to `mikheilkachkachishvili@gmail.com`. |
 | `SUPABASE_SERVICE_ROLE_KEY`, `ADMIN_DIRECTOR_EMAIL`, `ADMIN_MANAGER_EMAIL` | `pnpm seed:admins` only. Do not put the service-role key on Netlify. |
 
-## Invoice e-mail
+## Invoice
 
-Approving a booking e-mails the guest an invoice (in their language) with the price lines, the discount and the bank-transfer details from Settings. Defaults, editable in Admin → Settings:
+Approving a booking does not e-mail the guest. On an approved booking, **ინვოისი** (next to **გადახდა**) downloads a PDF file. The file is A4, black on white, and in Georgian. It shows the business name from Settings (ფლოკის სახლი by default), the dog, owner, phone, service, dates, price, booking number, and the bank details stored on Settings. Defaults, editable in Admin → Settings:
 
 - Bank: საქართველოს ბანკი (Bank of Georgia)
 - IBAN: `GE44BG0000000612766478`
 - Account number: `510001200`
 - Account holder: მიშა კაჭკაჭიშვილი
-- Invoice sender: `mikheilkachkachishvili@gmail.com`
 
 Contact phone and the terms link stay empty.
 
-- The sender is the e-mail `From` and is printed on the invoice. [Resend](https://resend.com) only delivers from a domain you verify in their dashboard. `gmail.com` cannot be verified, so this address does not actually send — it only appears on the invoice and in `/admin/outbox`. A verified domain (or `INVOICE_FROM_EMAIL` on that domain) is required before real delivery works.
-- To attempt a real send, set `RESEND_API_KEY`. Without a key, e-mails are only recorded in `/admin/outbox`.
+## New-booking notice
+
+When a guest booking is stored, the server sends one plain-text e-mail to `BOOKING_NOTIFY_EMAIL` (default `mikheilkachkachishvili@gmail.com`). Subject: `ახალი ჯავშანი — ფლოკის სახლი`. The body lists dog name, owner, phone, e-mail, service (სასტუმრო / ბაღი), dates, price and the booking number (`ref`).
+
+No API key means the notice is skipped. A failed send is logged and the guest still sees success. Gmail SMTP is not used. Invoices are not part of this notice.
 
 ## Project layout
 
 ```
 src/app/[locale]/          guest booking page + public Server Actions
-src/app/admin/             login, (panel)/ dashboard, bookings, calendar, settings, outbox
+src/app/admin/             login, invoice PDF download, (panel)/ dashboard, bookings, calendar, settings, outbox
 src/components/booking/    booking flow UI
 src/components/admin/      admin UI
 src/lib/domain/            types, pricing (mirrors SQL compute_quote), dates, zod schemas

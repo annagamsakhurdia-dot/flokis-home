@@ -7,8 +7,8 @@ import { balance, dmy, gel, paidAmount, paymentState } from "@/lib/domain/format
 import type { Booking, PaymentMethod, ServiceCode } from "@/lib/domain/types";
 import { ServiceIcon } from "@/components/brand/service-icon";
 import { SERVICE_KA, STATUS_KA } from "@/lib/admin/stats";
-import { addPaymentAction, deletePaymentAction, resendInvoiceAction } from "@/app/admin/actions";
-import { Button } from "@/components/ui/button";
+import { addPaymentAction, deletePaymentAction } from "@/app/admin/actions";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -120,14 +120,6 @@ function BookingRow({ b, today }: { b: Booking; today: string }) {
   const state = paymentState(b);
   const isApproved = b.status === "approved";
 
-  function resend() {
-    start(async () => {
-      const res = await resendInvoiceAction(b.id);
-      if (res.ok) toast.success(res.message);
-      else toast.error(res.error);
-    });
-  }
-
   function removePayment(id: string) {
     if (!window.confirm("წავშალოთ ეს გადახდა?")) return;
     start(async () => {
@@ -177,9 +169,13 @@ function BookingRow({ b, today }: { b: Booking; today: string }) {
                   💰 გადახდები · {gel(paidAmount(b))} / {gel(b.total)}
                 </p>
                 <div className="flex gap-1.5">
-                  <Button size="sm" variant="outline" disabled={pending} onClick={resend}>
-                    {pending ? <Loader2 className="animate-spin" /> : <Mail />} ინვოისი
-                  </Button>
+                  <a
+                    href={`/admin/invoice/${b.id}/pdf`}
+                    download={`ინვოისი-${b.ref}.pdf`}
+                    className={buttonVariants({ size: "sm", variant: "outline" })}
+                  >
+                    <Mail /> ინვოისი
+                  </a>
                   <Button size="sm" className="bg-terracotta text-white hover:bg-[#b85a38]" onClick={() => setPayOpen(true)}>
                     <Plus /> გადახდა
                   </Button>
