@@ -1,21 +1,21 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ChevronDown, Loader2, Mail, Plus, Search, Trash2 } from "lucide-react";
+import { ChevronDown, Mail, Plus, Search, Trash2 } from "lucide-react";
 import { balance, dmy, gel, paidAmount, paymentState } from "@/lib/domain/format";
-import type { Booking, PaymentMethod, ServiceCode } from "@/lib/domain/types";
+import type { Booking, ServiceCode } from "@/lib/domain/types";
 import { ServiceIcon } from "@/components/brand/service-icon";
+import { tabForBooking, visibleBookings, type PayFilter, type StatusFilter } from "@/lib/admin/booking-search";
 import { SERVICE_KA, STATUS_KA } from "@/lib/admin/stats";
-import { addPaymentAction, deletePaymentAction } from "@/app/admin/actions";
+import { deletePaymentAction } from "@/app/admin/actions";
+import { PaymentDialog } from "./payment-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { BookingDetails, PriceSummary, ServiceLabel, bookingDates } from "./booking-details";
 
-type StatusFilter = "active" | "pending" | "past" | "rejected" | "all";
 const STATUS_TABS: { key: StatusFilter; label: string }[] = [
   { key: "active", label: "მიმდინარე" },
   { key: "pending", label: "მოლოდინში" },
@@ -23,7 +23,16 @@ const STATUS_TABS: { key: StatusFilter; label: string }[] = [
   { key: "rejected", label: "უარყოფილი" },
   { key: "all", label: "ყველა" },
 ];
-type PayFilter = "any" | "unpaid" | "partial" | "paid";
+
+function parseStatus(value: string | null): StatusFilter {
+  if (value === "active" || value === "pending" || value === "past" || value === "rejected" || value === "all") return value;
+  return "active";
+}
+
+function parsePay(value: string | null): PayFilter {
+  if (value === "any" || value === "unpaid" || value === "partial" || value === "paid") return value;
+  return "any";
+}
 
 const PAY_STYLE = {
   paid: { label: "გადახდილი", cls: "bg-[#eafaf1] text-[#1a7a3c] border-[#2ecc71]" },
@@ -32,27 +41,18 @@ const PAY_STYLE = {
 } as const;
 
 export function BookingsList({ bookings, today }: { bookings: Booking[]; today: string }) {
-  const [status, setStatus] = useState<StatusFilter>("active");
+  const sp = useSearchParams();
+  const openId = sp.get("open");
+  const opened = openId ? bookings.find((b) => b.id === openId) : undefined;
+  const [status, setStatus] = useState<StatusFilter>(opened ? tabForBooking(opened, today) : parseStatus(sp.get("status")));
   const [service, setService] = useState<ServiceCode | "ALL">("ALL");
-  const [pay, setPay] = useState<PayFilter>("any");
+  const [pay, setPay] = useState<PayFilter>(parsePay(sp.get("pay")));
   const [q, setQ] = useState("");
 
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return bookings
-      .filter((b) => {
-        const lastDay = b.days[b.days.length - 1] ?? b.checkOut;
-        if (status === "active" && !(b.status === "approved" && lastDay >= today)) return false;
-        if (status === "pending" && b.status !== "pending") return false;
-        if (status === "past" && !(b.status === "approved" && lastDay < today)) return false;
-        if (status === "rejected" && !["rejected", "cancelled"].includes(b.status)) return false;
-        if (service !== "ALL" && b.service !== service) return false;
-        if (pay !== "any" && (b.status !== "approved" || paymentState(b) !== pay)) return false;
-        if (!needle) return true;
-        return [b.dog.name, b.dog.breed, b.owner.fullName, b.owner.phone, b.owner.email, b.ref].some((v) => v.toLowerCase().includes(needle));
-      })
-      .sort((a, b) => a.checkIn.localeCompare(b.checkIn));
-  }, [bookings, status, service, pay, q, today]);
+  const filtered = useMemo(
+    () => visibleBookings(bookings, { today, status, service, pay, query: q, openId }),
+    [bookings, status, service, pay, q, today, openId],
+  );
 
   return (
     <div>
@@ -65,12 +65,12 @@ export function BookingsList({ bookings, today }: { bookings: Booking[]; today: 
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ძებნა: ძაღლი, მეპატრონე, ჯიში, ტელეფონი, ნომერი" className="h-10 bg-cream pl-9" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="ძებნა: მეპატრონე, ტელეფონი ან ძაღლი" className="h-10 bg-cream pl-9" />
           </div>
           <div className="flex gap-1 overflow-x-auto">
-            <Chip on={service === "ALL"} onClick={() => setService("ALL")}>ყველა</Chip>
+            <Chip quiet on={service === "ALL"} onClick={() => setService("ALL")}>სასტუმრო და ბაღი</Chip>
             {(["HOTEL", "GARDEN"] as const).map((s) => (
-              <Chip key={s} on={service === s} onClick={() => setService(s)}><ServiceIcon code={s} /> {SERVICE_KA[s]}</Chip>
+              <Chip quiet key={s} on={service === s} onClick={() => setService(s)}><ServiceIcon code={s} /> {SERVICE_KA[s]}</Chip>
             ))}
           </div>
         </div>
@@ -89,7 +89,7 @@ export function BookingsList({ bookings, today }: { bookings: Booking[]; today: 
       ) : (
         <div className="space-y-2.5">
           {filtered.map((b) => (
-            <BookingRow key={b.id} b={b} today={today} />
+            <BookingRow key={`${b.id}:${b.id === openId ? "open" : "shut"}`} b={b} today={today} startOpen={b.id === openId} />
           ))}
         </div>
       )}
@@ -97,14 +97,15 @@ export function BookingsList({ bookings, today }: { bookings: Booking[]; today: 
   );
 }
 
-function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: React.ReactNode }) {
+function Chip({ on, onClick, quiet, children }: { on: boolean; onClick: () => void; quiet?: boolean; children: React.ReactNode }) {
   return (
     <button
       type="button"
       aria-pressed={on}
       onClick={onClick}
       className={cn(
-        "inline-flex shrink-0 items-center gap-1 rounded-lg border-[1.5px] px-2.5 py-1.5 text-xs font-semibold whitespace-nowrap transition-colors",
+        "inline-flex shrink-0 items-center gap-1 rounded-lg border-[1.5px] whitespace-nowrap transition-colors",
+        quiet ? "px-2 py-1 text-[11px] font-medium" : "px-2.5 py-1.5 text-xs font-semibold",
         on ? "border-sage bg-sage-soft text-forest" : "border-sand bg-cream text-muted-foreground hover:border-sage/50",
       )}
     >
@@ -113,12 +114,18 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
   );
 }
 
-function BookingRow({ b, today }: { b: Booking; today: string }) {
-  const [open, setOpen] = useState(false);
+function BookingRow({ b, today, startOpen }: { b: Booking; today: string; startOpen: boolean }) {
+  const [open, setOpen] = useState(startOpen);
   const [payOpen, setPayOpen] = useState(false);
   const [pending, start] = useTransition();
+  const articleRef = useRef<HTMLElement>(null);
   const state = paymentState(b);
   const isApproved = b.status === "approved";
+
+  useEffect(() => {
+    if (!startOpen) return;
+    articleRef.current?.scrollIntoView({ block: "center" });
+  }, [startOpen]);
 
   function removePayment(id: string) {
     if (!window.confirm("წავშალოთ ეს გადახდა?")) return;
@@ -130,7 +137,7 @@ function BookingRow({ b, today }: { b: Booking; today: string }) {
   }
 
   return (
-    <article className={cn("rounded-2xl border-[1.5px] border-l-4 border-sand bg-card shadow-soft", isApproved ? (state === "paid" ? "border-l-[#2ecc71]" : state === "partial" ? "border-l-[#f1c40f]" : "border-l-[#e74c3c]") : "border-l-sand")}>
+    <article ref={articleRef} id={`booking-${b.id}`} className={cn("rounded-2xl border-[1.5px] border-l-4 border-sand bg-card shadow-soft", isApproved ? (state === "paid" ? "border-l-[#2ecc71]" : state === "partial" ? "border-l-[#f1c40f]" : "border-l-[#e74c3c]") : "border-l-sand")}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} className="flex w-full items-start gap-3 p-4 text-left">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -161,6 +168,12 @@ function BookingRow({ b, today }: { b: Booking; today: string }) {
             {b.invoiceSentAt && <> · ინვოისი გაიგზავნა {dmy(b.invoiceSentAt.slice(0, 10))}</>}
             {b.rejectReason && <> · მიზეზი: {b.rejectReason}</>}
           </div>
+
+          {!isApproved && b.status === "pending" && (
+            <p className="mt-3 rounded-xl bg-cream px-3 py-2 text-xs text-muted-foreground">
+              გადახდა ჩაიწერება დადასტურების შემდეგ. დაადასტურეთ მოთხოვნა მიმოხილვიდან.
+            </p>
+          )}
 
           {isApproved && (
             <div className="mt-3 rounded-xl bg-cream p-3">
@@ -207,70 +220,3 @@ function BookingRow({ b, today }: { b: Booking; today: string }) {
   );
 }
 
-function PaymentDialog({ b, open, onOpenChange, today }: { b: Booking; open: boolean; onOpenChange: (o: boolean) => void; today: string }) {
-  const [amount, setAmount] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>("bank_transfer");
-  const [note, setNote] = useState("");
-  const [paidOn, setPaidOn] = useState(today);
-  const [pending, start] = useTransition();
-  const remaining = Math.max(0, balance(b));
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    start(async () => {
-      const res = await addPaymentAction({ bookingId: b.id, amount: Number(amount), method, note, paidOn });
-      if (res.ok) {
-        toast.success(res.message);
-        onOpenChange(false);
-        setAmount("");
-        setNote("");
-      } else toast.error(res.error);
-    });
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={(o) => !pending && onOpenChange(o)}>
-      <DialogContent>
-        <form onSubmit={submit} className="grid gap-3">
-          <DialogHeader>
-            <DialogTitle>გადახდის დამატება — {b.dog.name}</DialogTitle>
-            <DialogDescription>დარჩენილი: {gel(remaining)} (სულ {gel(b.total)})</DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-2 gap-1.5">
-            {(["bank_transfer", "barter"] as const).map((m) => (
-              <button key={m} type="button" aria-pressed={method === m} onClick={() => setMethod(m)}
-                className={cn("rounded-lg border-[1.5px] py-2 text-xs font-bold", method === m ? "border-sage bg-sage-soft text-forest" : "border-sand bg-cream text-muted-foreground")}>
-                {m === "bank_transfer" ? "🏦 საბანკო გადარიცხვა" : "🤝 ბარტერი"}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-2 gap-2">
-            <div className="space-y-1">
-              <Label htmlFor={`amt-${b.id}`}>თანხა (₾)</Label>
-              <Input id={`amt-${b.id}`} type="number" inputMode="decimal" min="0.01" step="0.01" required value={amount} onChange={(e) => setAmount(e.target.value)} />
-              {remaining > 0 && (
-                <button type="button" className="text-[11px] font-semibold text-sage underline" onClick={() => setAmount(String(remaining))}>
-                  მთლიანი ნაშთი: {gel(remaining)}
-                </button>
-              )}
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor={`date-${b.id}`}>თარიღი</Label>
-              <Input id={`date-${b.id}`} type="date" required max={today} value={paidOn} onChange={(e) => setPaidOn(e.target.value)} />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor={`note-${b.id}`}>{method === "barter" ? "ბარტერის აღწერა *" : "შენიშვნა / ბანკი"}</Label>
-            <Input id={`note-${b.id}`} maxLength={300} required={method === "barter"} value={note} onChange={(e) => setNote(e.target.value)} placeholder={method === "barter" ? "მაგ: ფოტოსესია" : "მაგ: TBC, BOG"} />
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={pending}>გაუქმება</Button>
-            <Button type="submit" disabled={pending} className="bg-terracotta text-white hover:bg-[#b85a38]">
-              {pending && <Loader2 className="animate-spin" />} შენახვა
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { todayInTbilisi } from "@/lib/domain/dates";
 import { adminBackend } from "@/lib/server/backend";
 import { BookingsList } from "@/components/admin/bookings-list";
@@ -7,7 +8,9 @@ export default async function BookingsPage() {
   return (
     <div>
       <h1 className="mb-3 text-lg font-extrabold text-forest">ჯავშნები და გადახდები</h1>
-      <BookingsList bookings={bookings} today={todayInTbilisi()} />
+      <Suspense fallback={<p className="text-sm text-muted-foreground">იტვირთება…</p>}>
+        <BookingsList bookings={bookings} today={todayInTbilisi()} />
+      </Suspense>
     </div>
   );
 }

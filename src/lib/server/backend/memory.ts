@@ -127,6 +127,13 @@ function createSeedState(): MemoryState {
       owner: { fullName: "თამარ ბერიძე", phone: "593 44 55 66", email: "tamar@example.com" },
       status: "approved", createdDaysAgo: 2,
     }),
+    // Finished garden visit that still owes money: hidden from the default "current" tab.
+    seedBooking(settings, {
+      service: "GARDEN", gardenPackage: "SINGLE", gardenDays: [d(-4)], arrivalTime: "09:00", departureTime: "18:00",
+      dog: { name: "ჩარო", age: "2 წელი", breed: "კორგი", sex: "female", ...vet },
+      owner: { fullName: "ეკა გელაშვილი", phone: "555 98 76 54", email: "eka@example.com" },
+      status: "approved", createdDaysAgo: 6,
+    }),
     seedBooking(settings, {
       service: "HOTEL", checkIn: d(5), checkOut: d(9), arrivalTime: "11:00", departureTime: "17:00",
       dog: { name: "ლუნა", age: "2 წელი", breed: "ჰასკი", sex: "female", sterilized: "no", vaccines: "ცოფი 03/2026, კომპლექსური 04/2026", ...vet },
